@@ -91,3 +91,5 @@ secrets.json
 # Generated data files
 data-pipeline/*.json
 !data-pipeline/package.json
+# Exported ONNX model
+data-pipeline/onnx-model/
