@@ -1,6 +1,6 @@
 # Anime Semantic Search Engine
 
-> Find anime by meaning, not just keywords. Search _"a sword-wielding mc set in feudal Japan"_ and get results that actually understand you.
+> Find anime by meaning, not just keywords. Search _"a slow-burn romance set in feudal Japan"_ and get results that actually understand you.
 
 A full-stack semantic search engine powered by NLP vector embeddings. Instead of matching exact keywords, it encodes the _contextual meaning_ of a user's query and finds anime with semantically similar descriptions using cosine similarity.
 
@@ -8,13 +8,14 @@ A full-stack semantic search engine powered by NLP vector embeddings. Instead of
 
 ## Tech Stack
 
-| Layer              | Technology                                    |
-| ------------------ | --------------------------------------------- |
-| Frontend           | React (Vite)                                  |
-| Backend API        | C# (ASP.NET Core Web API)                     |
-| ML / Data Pipeline | Python, HuggingFace `sentence-transformers`   |
-| Vector Database    | Qdrant / Pinecone / PostgreSQL / tbd          |
-| Data Source        | [Jikan API](https://jikan.moe/) (MyAnimeList) |
+| Layer                  | Technology                                    |
+| ---------------------- | --------------------------------------------- |
+| Frontend               | React (Vite) + Tailwind CSS                   |
+| Backend API            | C# (ASP.NET Core Web API)                     |
+| ML / Data Pipeline     | Python, HuggingFace `sentence-transformers`   |
+| ML Inference (runtime) | ONNX Runtime for .NET                         |
+| Vector Database        | Qdrant (Docker)                               |
+| Data Source            | [Jikan API](https://jikan.moe/) (MyAnimeList) |
 
 ---
 
@@ -26,14 +27,16 @@ User Query
     ▼
 React Frontend  ──(HTTP)──▶  C# ASP.NET Core API
                                       │
-                          Embed query with HuggingFace model
+                          Embed query via ONNX Runtime
+                          (all-MiniLM-L6-v2, 384 dims)
                                       │
                                       ▼
-                             Vector Database
+                             Qdrant Vector Database
                           cosine similarity search
                                       │
                                       ▼
                              Top-N anime results
+                             (title, synopsis, genres, score)
                                       │
                                       ▼
                              React Frontend renders cards
@@ -42,37 +45,53 @@ React Frontend  ──(HTTP)──▶  C# ASP.NET Core API
 **How it works end-to-end:**
 
 1. **Data Ingestion** — A Python script fetches anime metadata (title, synopsis, genres) from the Jikan API.
-2. **Vectorization** — Each synopsis is encoded into a high-dimensional embedding vector using a pre-trained `sentence-transformers` model, capturing its semantic meaning.
-3. **Vector Storage** — Embeddings and metadata are upserted into a vector database, enabling fast approximate nearest-neighbor lookups.
-4. **Semantic Search** — When a user submits a query, the C# API embeds it using the same model and runs a cosine similarity search against the stored vectors, returning the closest matches.
+2. **Vectorization** — Each synopsis is encoded into a 384-dimensional embedding vector using `all-MiniLM-L6-v2`, capturing its semantic meaning.
+3. **Vector Storage** — Embeddings and metadata are upserted into a Qdrant collection, enabling fast cosine similarity lookups.
+4. **ONNX Export** — The HuggingFace model is exported to ONNX format so it can run natively inside the C# API at inference time.
+5. **Semantic Search** — When a user submits a query, the C# API embeds it using the ONNX model, runs a cosine similarity search against the stored vectors, and returns the closest matches.
 
 ---
 
 ## Roadmap
 
-### Infrastructure
+### Completed
 
 - [x] Project structure and multi-language `.gitignore`
+- [x] Jikan API scraper — fetch top anime
+- [x] HuggingFace embedding generation (`all-MiniLM-L6-v2`)
+- [x] Qdrant vector database setup and upload
+- [x] ONNX model export for C# runtime inference
+- [x] `POST /api/search` — embed query and run cosine similarity search
+- [x] React frontend — search bar, result cards, loading/error states
+- [x] Tailwind CSS dark theme UI
 
-### Data Pipeline (Python)
+### Upcoming
 
-- [ ] Jikan API scraper — fetch top 1000 anime
-- [ ] HuggingFace embedding generation (`all-MiniLM-L6-v2`)
-- [ ] Upsert embeddings into vector database
+#### Scale to Full Dataset
 
-### Backend (C# / ASP.NET Core)
+The current dataset covers ~100 anime. MyAnimeList has ~25,000 entries. Scaling up requires:
 
-- [ ] Initialize .NET Web API project
-- [ ] Connect to vector database client
-- [ ] `POST /api/search` — embed query and run similarity search
-- [ ] Return ranked results with metadata
+- Pagination strategy across the full Jikan API dataset
+- Batch embedding generation to handle memory efficiently
+- Benchmarking Qdrant query performance at scale and tuning index parameters (HNSW settings) if needed
 
-### Frontend (React)
+#### Cover Images
 
-- [ ] Search bar component with query submission
-- [ ] Anime result cards (title, synopsis, score, cover image)
-- [ ] Loading states and error handling
-- [ ] Responsive layout
+- Fetch and store MAL cover image URLs alongside existing metadata in the Jikan scraper (the `images` field is already returned by the API)
+- Display cover images on anime result cards in the React frontend
+
+#### Weighted Attribute Search
+
+Currently the search query is embedded as a single block of text. The goal is to support **priority tags** — for example, searching _"sword wielding mc with red hair"_ should weight "sword wielding mc" higher than "red hair".
+
+- Explore multi-field embeddings or query decomposition strategies
+- Potentially embed synopsis, genres, and visual attributes as separate vectors and combine scores at query time
+
+#### Watched Anime Filter
+
+- Allow users to maintain a local "watched" list
+- Exclude watched anime from search results at query time using Qdrant's payload filtering feature (filter by `mal_id` not in watched list)
+- This doubles as a performance optimization at scale — filtering before ranking reduces the candidate set Qdrant needs to score
 
 ---
 
