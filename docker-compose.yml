@@ -1,0 +1,36 @@
+services:
+  qdrant:
+    image: qdrant/qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+  api:
+    build:
+      context: ./backend/AnimeSearchApi
+      dockerfile: Dockerfile
+    ports:
+      - "5245:8080"
+    depends_on:
+      - qdrant
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - OnnxModelPath=/app/onnx-model/model.onnx
+      - TokenizerPath=/app/onnx-model/vocab.txt
+      - QdrantHost=qdrant
+    volumes:
+      - ./data-pipeline/onnx-model:/app/onnx-model:ro
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+volumes:
+  qdrant_storage:

@@ -12,9 +12,13 @@ builder.Services.AddOpenApi();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
-        policy.WithOrigins("http://localhost:5173")
-              .AllowAnyHeader()
-              .AllowAnyMethod());
+        policy.WithOrigins(
+            "http://localhost:5173",
+            "http://localhost:80",
+            "http://localhost"
+        )
+        .AllowAnyHeader()
+        .AllowAnyMethod());
 });
 
 // making onnx model, tokenizer and qdrant as singletons
@@ -32,7 +36,8 @@ builder.Services.AddSingleton(_ =>
     return BertTokenizer.Create(tokenizerPath);
 });
 
-builder.Services.AddSingleton(_ => new QdrantClient("localhost", 6334));
+var qdrantHost = builder.Configuration["QdrantHost"] ?? "localhost";
+builder.Services.AddSingleton(_ => new QdrantClient(qdrantHost, 6334));
 
 var app = builder.Build();
 
